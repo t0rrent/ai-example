@@ -1,7 +1,7 @@
-This program is an example of an AI that is trained to recognise characters from the English language. It is trained on the EMNIST dataset downloaded here: https://www.kaggle.com/datasets/tomasramos21/emnist-jpeg
+This program is an example of an AI that is trained to recognise characters from the English alphabet. It is trained on the EMNIST dataset downloaded here: https://www.kaggle.com/datasets/tomasramos21/emnist-jpeg
 
 Build instructions
-1. In the root directory: mvn clean package install.
+1. In the root directory: 'mvn clean package install'.
 2. In the maven build directory (usually "target"), take ai-example-x.x.x.jar and the "libs/" folder for your deployment.
 3. You will also need "pub/" (only for presentation implementations) and "config.json" for your deployment.
 

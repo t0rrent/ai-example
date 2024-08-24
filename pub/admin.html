@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>AI Training</title>
+		<style>
+			body {
+				margin: 0px;
+				background-color: #fff;
+				font-family: Arial, Helvetica, sans-serif;
+			}
+			
+			#contributors {
+				width: calc(50% - 2px);
+				float: left;
+				border-right: solid 2px #000000;
+			}
+			
+			#contributions {
+				width: calc(50% - 2px);
+				float: right;
+				border-left: solid 2px #000000;
+			}
+			
+			.contributor {
+				padding: 8px;
+			}
+			
+			.contribution {
+				padding: 8px;
+			}
+			
+			.drawing {
+				width: 128px;
+				height: 128px;
+				border: solid 1px #000000;
+			}
+			
+			.banned {
+				background-color: #ffaaaa;
+			}
+		</style>
+	</head>
+	<body>
+		<span id="contributors">Enter admin token:<input id="token_field"></input><button onclick="submitAccessToken()">Submit</button></span>
+		<span id="contributions"></span>
+		
+		<script src="lib.js"></script>
+		<script>
+			const BASE_URI = "http://192.168.1.106";
+			
+			const PAGE_SIZES = {
+					contributors: 20,
+					contributions: 5
+			};
+			
+			const PAGE_NUMBERS = {};
+			
+			const CANVAS_SIZE = 32;
+		
+			let accessToken;
+			
+			let contributorCount;
+			
+			let focusedContributorId;
+			
+			function submitAccessToken() {
+				accessToken = document.getElementById("token_field").value;
+				const httpRequest = {
+						baseUrl: BASE_URI + "/api/admin/contributor-count",
+						requestMethod: "GET",
+						authorization: "Bearer " + accessToken
+				};
+				invokeHttpAsync(httpRequest, initContributors, (e) => console.log(e));
+			}
+		
+			function initContributors(count) {
+				contributorCount = count;
+				setContributors(0, Math.min(count, PAGE_SIZES.contributors));
+				addPaginationButtons("contributors", contributorCount, "setContributors");
+			}
+			
+			function setContributors(skip, limit) {
+				const httpRequest = {
+						baseUrl: BASE_URI + `/api/admin/contributors?skip=${skip}&limit=${limit}`,
+						requestMethod: "GET",
+						authorization: "Bearer " + accessToken
+				};
+				invokeHttpAsync(httpRequest, (contributors) => {
+					const contributorsElement = document.getElementById("contributors");
+					const paginationButtons = contributorsElement.getElementsByClassName("pagination")[0];
+					let html = "";
+					for (const contributor of contributors) {
+						const expandButton = `<button onclick="showContributions(${contributor.id}, ${contributor.contributionCount})">Show</button>`;
+						const banButton = `<button class="ban_button" onclick="banContributor(${contributor.id}, this)">${contributor.banned ? "Unban" : "Ban"}</button>`;
+						html += `<div class="contributor${contributor.banned ? " banned" : ""}" id="contributor_${contributor.id}">IP: ${contributor.ipAddress}, Last Contribution: ${formatDate(contributor.lastContributionDate)}, Contributions: ${contributor.contributionCount} ${banButton} ${expandButton}</div>`;
+					}
+					contributorsElement.innerHTML = html;
+					contributorsElement.appendChild(paginationButtons);
+				}, (e) => console.log(e));
+			}
+			
+			function setContributions(skip, limit) {
+				const httpRequest = {
+						baseUrl: BASE_URI + `/api/admin/audit-contributions?contributor-id=${focusedContributorId}&skip=${skip}&limit=${limit}`,
+						requestMethod: "GET",
+						authorization: "Bearer " + accessToken
+				};
+				invokeHttpAsync(httpRequest, (contributions) => {
+					const contributionsElement = document.getElementById("contributions");
+					const paginationButtons = contributionsElement.getElementsByClassName("pagination")[0];
+					let html = "";
+					const canvases = [];
+					for (const contribution of contributions) {
+						const canvasUID = uuidv4();
+						canvases.push(canvasUID);
+						const drawingData = contribution.compressedDrawing
+							.map((value) => value ? 1 : 0)
+							.join(" ");
+						const canvas = `<canvas id="${canvasUID}" class="drawing" data="${drawingData}"></canvas>`;
+						html += `<div class="contribution"><div>Character: '${contribution.character}', Date Added: ${formatDate(contribution.dateAdded)}</div><div>${canvas}</div></div>`;
+					}
+					contributionsElement.innerHTML = html;
+					contributionsElement.appendChild(paginationButtons);
+					window.requestAnimationFrame(() => drawDrawings(canvases))
+				}, (e) => console.log(e));
+			}
+			
+			function drawDrawings(canvases) {
+				for (const canvasId of canvases) {
+					const canvas = document.getElementById(canvasId);
+					const data = canvas.getAttribute("data")
+						.split(" ")
+						.map((value) => value === "1");
+					const drawing = [];
+					for (let dataIndex = 0; dataIndex < data.length / 6; dataIndex++) {
+						const value = data[dataIndex * 6];
+						const runLength = getRunLength(Array.prototype.slice.apply(data).slice(dataIndex * 6 + 1, dataIndex * 6 + 6));
+						for (let i = 0; i < runLength; i++) {
+							drawing.push(value);
+						}
+					}
+					
+					const graphics = canvas.getContext("2d");
+					graphics.canvas.width = 128;
+					graphics.canvas.height = 128;
+					graphics.fillStyle = "black";
+					graphics.font = "24px serif";
+					if (drawing.length != CANVAS_SIZE * CANVAS_SIZE) {
+						graphics.fillText("invalid", 10, 50);
+					} else {
+						for (let y = 0; y < CANVAS_SIZE; y++) {
+							for (let x = 0; x < CANVAS_SIZE; x++) {
+								if (drawing[x + y * CANVAS_SIZE]) {
+									const left = x * 128 / CANVAS_SIZE;
+									const right = (x + 1) * 128 / CANVAS_SIZE;
+									const top = y * 128 / CANVAS_SIZE;
+									const bottom = (y + 1) * 128 / CANVAS_SIZE;
+									graphics.fillRect(Math.round(left), Math.round(top), Math.round(right - left), Math.round(bottom - top));
+								}
+							}
+						}
+					}
+				}
+			}
+			
+			function getRunLength(bitArray) {
+				let runSize = 1;
+				let factor = 1;
+				for (let bitIndex = 0; bitIndex < bitArray.length; bitIndex++) {
+					if (bitArray[bitIndex]) {
+						runSize += factor;
+					}
+					factor *= 2;
+				}
+				return runSize;
+			}
+			
+			function showContributions(contributorId, contributionCount) {
+				focusedContributorId = contributorId;
+				const contributionsElement = document.getElementById("contributions");
+				contributionsElement.innerHTML = "";
+				setContributions(0, Math.min(contributionCount, PAGE_SIZES.contributions));
+				addPaginationButtons("contributions", contributionCount, "setContributions");
+			}
+			
+			function banContributor(id, button) {
+				const alreadyBanned = button.textContent === "Unban";
+				if (alreadyBanned || window.confirm("Are you sure?")) {
+					const httpRequest = {
+							baseUrl: BASE_URI + `/api/admin/${alreadyBanned ? "unban" : "ban"}?contributor-id=${id}`,
+							requestMethod: "GET",
+							authorization: "Bearer " + accessToken
+					};
+					invokeHttpAsync(httpRequest, (r) => banComplete(id, r.banned), (e) => console.log(e));
+				}
+			}
+			
+			function banComplete(id, newBanStatus) {
+				const contributorElement = document.getElementById("contributor_" + id);
+				if (contributorElement !== undefined) {
+					if (newBanStatus) {
+						contributorElement.classList.add("banned");
+					} else {
+						contributorElement.classList.remove("banned");
+					}
+					const banButton = contributorElement.getElementsByClassName("ban_button")[0].textContent = newBanStatus ? "Unban" : "Ban";
+				}
+			}
+			
+			function formatDate(epochMs) {
+				const date = new Date(epochMs);
+			    const year = date.getFullYear();
+			    const month = String(date.getMonth() + 1).padStart(2, '0');
+			    const day = String(date.getDate()).padStart(2, '0');
+			    const hours = String(date.getHours()).padStart(2, '0');
+			    const minutes = String(date.getMinutes()).padStart(2, '0');
+			    const seconds = String(date.getSeconds()).padStart(2, '0');
+			    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+			}
+			
+			function addPaginationButtons(parentId, itemCount, setter) {
+				const parent = document.getElementById(parentId);
+				const paginationButtons = document.createElement("div");
+				const pages = Math.ceil(itemCount / PAGE_SIZES[parentId]);
+				paginationButtons.classList.add("pagination");
+				paginationButtons.innerHTML = `<button id="${parentId + "_prev"}" onclick="prevButtonClick(this, ${itemCount}, ${setter})">prev</button> <span id="${parentId + "_label"}">Page 1 of ${pages}</span> <button id="${parentId + "_next"}" onclick="nextButtonClick(this, ${itemCount}, ${setter})">next</button>`;
+				parent.appendChild(paginationButtons);
+			}
+			
+			function nextButtonClick(button, itemCount, setter) {
+				const parentId = button.id.replace("_next", "");
+				const pages = Math.ceil(itemCount / PAGE_SIZES[parentId]);
+				const currentPageIndex = PAGE_NUMBERS[parentId] === undefined ? 0 : PAGE_NUMBERS[parentId];
+				if (currentPageIndex < pages - 1) {
+					PAGE_NUMBERS[parentId] = currentPageIndex + 1;
+					const skip = (currentPageIndex + 1) * PAGE_SIZES[parentId];
+					const limit = Math.min(PAGE_SIZES[parentId], itemCount - skip);
+					setter(skip, limit);
+					const label = document.getElementById(parentId + "_label");
+					label.textContent = `Page ${PAGE_NUMBERS[parentId] + 1} of ${pages}`;
+				}
+			}
+			
+			function prevButtonClick(button, itemCount, setter) {
+				const parentId = button.id.replace("_prev", "");
+				const pages = Math.ceil(itemCount / PAGE_SIZES[parentId]);
+				const currentPageIndex = PAGE_NUMBERS[parentId] === undefined ? 0 : PAGE_NUMBERS[parentId];
+				if (currentPageIndex > 0) {
+					PAGE_NUMBERS[parentId] = currentPageIndex - 1;
+					const skip = (currentPageIndex - 1) * PAGE_SIZES[parentId];
+					const limit = PAGE_SIZES[parentId];
+					setter(skip, limit);
+					const label = document.getElementById(parentId + "_label");
+					label.textContent = `Page ${PAGE_NUMBERS[parentId] + 1} of ${pages}`;
+				}
+			}
+			
+			function uuidv4() {
+				return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+					(+c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> +c / 4).toString(16)
+				);
+			}
+		</script>
+	</body>
+</html>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="example.ai.mapper.ModelMapper">
+	<insert id="insert" parameterType="ModelCommit">
+		INSERT INTO ai_model (
+			model,
+			f1_score,
+			type_name
+		) VALUES (
+			#{model},
+			#{f1Score},
+			'type_4'
+		);
+	</insert>
+	
+	<select id="getBestModel" resultType="ModelCommit">
+		SELECT 
+			model,
+			f1_score
+		FROM 
+			ai_model
+		WHERE type_name = 'type_4'
+		ORDER BY f1_score DESC LIMIT 1;
+	</select>
+</mapper>

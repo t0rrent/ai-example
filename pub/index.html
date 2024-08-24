@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>AI Training</title>
+		<style>
+			body {
+				margin: 0px;
+				background-color: #fff;
+				font-family: Arial, Helvetica, sans-serif;
+				overflow: hidden;
+			}
+			
+			button[selected-tab="true"] {
+				background-color: #fff;
+				border-bottom: 1px solid #ffffff;
+			}
+			
+			button[selected-tab="false"] {
+				background-color: #ddd;
+			}
+			
+			button[selected-tab="false"]:hover {
+				background-color: #eee;
+			}
+			
+			.tab_button {
+				width: 200px;
+				height: 50px;
+				border: 1px solid #444444;
+				font-size: 18px;
+			}
+			
+			.main_tab_buttons {
+				background-color: #bbb;
+				width: 100%;
+			  	-webkit-box-shadow: inset 0px -1px 0px 0px #000;
+			  	-moz-box-shadow: inset 0px -1px 0px 0px #000;
+			  	box-shadow: inset 0px -1px 0px 0px #000;
+			}
+			
+			h1 {
+				text-align: center;
+				font-size: 36px;
+				padding: 16px;
+			}
+			
+			p {
+				text-align: center;
+				font-size: 24px;
+				padding-bottom: 12px;
+			}
+			
+			.draw_box_container {
+				height: min(calc(100vw - 64px), calc(100vh - 300px));
+				width: min(calc(100vw - 64px), calc(100vh - 300px));
+				border: 2px solid #222;
+				margin-top: 16px;
+				margin: auto;
+			}
+			
+			canvas {
+				width: 100%;
+				height: 100%;
+			}
+			
+			.accept_button {
+				background-color: #22dd22;
+				margin-left: 20px;
+				padding: 8px;
+			}
+			
+			.reject_button {
+				background-color: #dd2222;
+				color: #ffffff;
+				margin-left: 20px;
+				padding: 8px;
+			}
+			
+			.reject_button:hover {
+				background-color: #ee3333;
+			}
+			
+			.accept_button:hover {
+				background-color: #33ee33;
+			}
+			
+			.disabled_button {
+				background-color: #777777;
+			}
+			
+			.disabled_button:hover {
+				background-color: #777777;
+			}
+		</style>
+	</head>
+	<body>
+		<tabs id="main_tab">
+			<tab name="Testing">
+				<h1>AI Testing</h1>
+				<p id="test_prompt">Please draw a letter<button class="reject_button" onclick="resetCanvas()">Reset [esc]</button><button class="accept_button" onclick="sendTestingData()">Submit [enter]</button></p>
+				<div class="draw_box_container">
+					<canvas class="draw_box" id="test_draw"></canvas>
+				</div>
+			</tab>
+			<tab name="Training">
+				<h1>AI Training</h1>
+				<p id="draw_prompt">Please draw the letter: ...<button class="reject_button" onclick="resetCanvas()">Reset [esc]</button><button class="accept_button" onclick="sendTrainingData()">Submit [enter]</button></p>
+				<div class="draw_box_container">
+					<canvas class="draw_box" id="train_draw"></canvas>
+				</div>
+			</tab>
+		</tabs>
+		
+		<script src="lib.js"></script>
+		<script>
+			const CANVAS_SIZE = 32;
+			
+			const BRUSH_SUBDIVISIONS = 3;
+			
+			const BRUSH_RADIUS = 2;
+			
+			const BOX_FILL_STATES = {};
+			
+			const INPUT = {
+					actionQueue: [],
+					singleActionQueue: [],
+					mouseDown: false,
+					mousePressed: false,
+					mouseReleased: false,
+					mousePosition: null
+			};
+		
+			const TAB_STORAGE = {};
+			
+			const BASE_URI = "http://192.168.1.106"
+			
+			let characterToDraw;
+			
+			let feedbackText = "Please draw a letter";
+			
+			function tabClick(tabButton) {
+				const groupId = tabButton.getAttribute("tabGroup");
+				const tabName = tabButton.getAttribute("tabName");
+				const tabGroup = document.getElementById(groupId);
+				const tabs = Array.prototype.slice.call(tabGroup.getElementsByTagName("tab"))
+					.filter((child) => child.parentElement === tabGroup);
+				
+				let tabClickedIndex;
+				for (let tabIndex = 0; tabIndex < tabs.length; tabIndex++) {
+					const tab = tabs[tabIndex];
+					if (tab.getAttribute("name") === tabName) {
+						tabClickedIndex = tabIndex;
+					}
+				}
+
+				for (let tabIndex = 0; tabIndex < tabs.length; tabIndex++) {
+					const tab = tabs[tabIndex];
+					const tabName = tab.getAttribute("name");
+					const tabKey = `${tabGroup.id}|${tabName}`;
+					
+					if (tabIndex == tabClickedIndex) {
+						tab.innerHTML = TAB_STORAGE[tabKey];
+					} else {
+						tab.innerHTML = "";
+					}
+				}
+				
+				Array.prototype.slice.call(tabGroup.getElementsByTagName("button"))
+					.filter((child) => child.getAttribute("tabGroup") === tabGroup.id)
+					.forEach((otherTabButton) => otherTabButton.setAttribute("selected-tab", `${otherTabButton === tabButton}`));
+				
+				window.requestAnimationFrame(handleDrawBoxes);
+			}
+			
+			function initTabs() {
+				for (const tabGroup of document.getElementsByTagName("tabs")) {
+					const tabs = Array.prototype.slice.call(tabGroup.getElementsByTagName("tab"))
+						.filter((child) => child.parentElement === tabGroup);
+					const tabButtons = [];
+					for (let tabIndex = 0; tabIndex < tabs.length; tabIndex++) {
+						const tab = tabs[tabIndex];
+						const tabButton = document.createElement("button");
+						const tabName = tab.getAttribute("name");
+						const tabKey = `${tabGroup.id}|${tabName}`;
+						
+						tabButton.textContent = tabName;
+						tabButton.classList.add("tab_button");
+						tabButton.setAttribute("tabGroup", tabGroup.id);
+						tabButton.setAttribute("tabName", tabName);
+						tabButton.setAttribute("onclick", "tabClick(this)");
+						
+						TAB_STORAGE[tabKey] = tab.innerHTML;
+						if (tabIndex == 0) {
+							tabButton.setAttribute("selected-tab", "true");
+						} else {
+							tab.innerHTML = "";
+							tabButton.setAttribute("selected-tab", "false");
+						}
+						
+						tabButtons.push(tabButton);
+					}
+					
+					const tabButtonRow = document.createElement("div");
+					tabButtonRow.classList.add(tabGroup.id + "_buttons")
+					tabGroup.insertBefore(tabButtonRow, tabs[0]);
+					for (let tabIndex = 0; tabIndex < tabs.length; tabIndex++) {
+						tabButtonRow.appendChild(tabButtons[tabIndex]);
+					}
+				}
+				window.requestAnimationFrame(handleDrawBoxes);
+			}
+			
+			function createEmptyFillState() {
+				return new Array(CANVAS_SIZE * CANVAS_SIZE).fill(0);
+			}
+			
+			function drawGridLines(graphics, boxRect) {
+				graphics.lineWidth = "1";
+				graphics.strokeStyle = "black";
+				const width = boxRect.width;
+				for (let lineIndex = 0; lineIndex < CANVAS_SIZE - 1; lineIndex++) {
+					graphics.beginPath();
+					graphics.moveTo(width * (lineIndex + 1) / CANVAS_SIZE, 0);
+					graphics.lineTo(width * (lineIndex + 1) / CANVAS_SIZE, width);
+					graphics.stroke();
+					graphics.beginPath();
+					graphics.moveTo(0, width * (lineIndex + 1) / CANVAS_SIZE);
+					graphics.lineTo(width, width * (lineIndex + 1) / CANVAS_SIZE);
+					graphics.stroke();
+				}
+			}
+			
+			let lastMousePosition = null;
+			
+			function handleInput(drawBoxId, boxRect) {
+				if (INPUT.mouseReleased) {
+					
+				} else if (INPUT.mouseDown) {
+					const cellWidth = boxRect.width / CANVAS_SIZE;
+					if (lastMousePosition == null) {
+						if (handleBrush(drawBoxId, boxRect, INPUT.mousePosition)) {
+							window.requestAnimationFrame(handleDrawBoxes);
+						}
+					} else {
+						const deltaX = INPUT.mousePosition.x - lastMousePosition.x;
+						const deltaY = INPUT.mousePosition.y - lastMousePosition.y;
+						const difference = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+						const steps = Math.ceil(difference / BRUSH_RADIUS);
+						
+						let needsGraphicalUpdate = false;
+						for (let step = 1; step <= steps; step++) {
+							needsGraphicalUpdate = needsGraphicalUpdate | handleBrush(drawBoxId, boxRect, {
+								x: lastMousePosition.x + deltaX * step / steps,
+								y: lastMousePosition.y + deltaY * step / steps
+							});
+						}
+						if (needsGraphicalUpdate) {
+							window.requestAnimationFrame(handleDrawBoxes);
+						}
+					}
+					lastMousePosition = INPUT.mousePosition;
+				}
+				if (!INPUT.mouseDown) {
+					lastMousePosition = null;
+				}
+			}
+			
+			function handleBrush(drawBoxId, boxRect, mousePosition) {
+				const brushGridSize = CANVAS_SIZE * BRUSH_SUBDIVISIONS;
+				
+				const localX = mousePosition.x - boxRect.x;
+				const localY = mousePosition.y - boxRect.y;
+				const brushX = Math.floor(localX * brushGridSize / boxRect.width);
+				const brushY = Math.floor(localY * brushGridSize / boxRect.height);
+				
+				if (brushX >= 0 && brushX < brushGridSize && brushY >= 0 && brushY < brushGridSize) {
+					const drawGridX = Math.floor(brushX / BRUSH_SUBDIVISIONS);
+					const drawGridY = Math.floor(brushY / BRUSH_SUBDIVISIONS);
+					const drawGrid = BOX_FILL_STATES[drawBoxId];
+					
+					for (let x = Math.max(0, drawGridX - BRUSH_RADIUS); x <= Math.min(drawGridX + BRUSH_RADIUS, CANVAS_SIZE - 1); x++) {
+						for (let y = Math.max(0, drawGridY - BRUSH_RADIUS); y <= Math.min(drawGridY + BRUSH_RADIUS, CANVAS_SIZE - 1); y++) {
+							const currentValue = getGridCellValue(drawGrid, CANVAS_SIZE, x, y);
+							const brushEquivalentX = x * BRUSH_SUBDIVISIONS + (BRUSH_SUBDIVISIONS - 1) / 2;
+							const brushEquivalentY = y * BRUSH_SUBDIVISIONS + (BRUSH_SUBDIVISIONS - 1) / 2;
+							const deltaX = brushEquivalentX - brushX;
+							const deltaY = brushEquivalentY - brushY;
+							const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY) / BRUSH_SUBDIVISIONS;
+							const asWeight = 1 - distance / BRUSH_RADIUS;
+							const effectValue = Math.max(0, Math.min(asWeight * 2, 1));
+							if (effectValue > currentValue) {
+								drawGrid[CANVAS_SIZE * y + x] = effectValue;
+							}
+						}
+					}
+					return true;
+				} else {
+					return false;
+				}
+			}
+			
+			function handleDrawBoxes(timestamp) {
+				const drawBoxes = document.getElementsByClassName("draw_box");
+				if (drawBoxes.length != 1) {
+					window.requestAnimationFrame(handleDrawBoxes);
+					return;
+				}
+				drawBox = drawBoxes[0];
+				const boxRect = drawBox.getBoundingClientRect();
+				
+				const graphics = drawBox.getContext("2d");
+				graphics.canvas.width = boxRect.width;
+				graphics.canvas.height = boxRect.height;
+				
+				if (BOX_FILL_STATES[drawBox.id] === undefined) {
+					BOX_FILL_STATES[drawBox.id] = createEmptyFillState();
+				}
+
+				const fillState = BOX_FILL_STATES[drawBox.id];
+				drawFillState(graphics, boxRect, fillState);
+				drawGridLines(graphics, boxRect);
+			}
+			
+			function drawFillState(graphics, boxRect, grid) {
+				const width = boxRect.width;
+				for (let y = 0; y < CANVAS_SIZE; y++) {
+					for (let x = 0; x < CANVAS_SIZE; x++) {
+						const value = getGridCellValue(grid, CANVAS_SIZE, x, y);
+						if (value > 0) {
+							const color = Math.round(255 - value * 255);
+							graphics.fillStyle = `rgb(${color} ${color} ${color})`;
+							const left = x * width / CANVAS_SIZE;
+							const top = y * width / CANVAS_SIZE;
+							const right = (x + 1) * width / CANVAS_SIZE;
+							const bottom = (y + 1) * width / CANVAS_SIZE;
+							graphics.fillRect(left, top, right - left, bottom - top);
+						}
+					}
+				}
+			}
+			
+			function getGridCellValue(gridArray, gridWidth, x, y) {
+				return gridArray[gridWidth * y + (x % gridWidth)];
+			}
+			
+			function inputHandlerUpdate() {
+				while (INPUT.actionQueue.length > 0) {
+					const action = INPUT.actionQueue.shift()
+					const actionType = action.actionType;
+					const eventData = action.event;
+					
+					if (actionType === "mouseleave") {
+						INPUT.mousePosition = null;
+					} else if (actionType === "mouseenter" || actionType === "mousemove") {
+						INPUT.mousePosition = {
+							x: eventData.clientX,
+							y: eventData.clientY
+						};
+					}
+				}
+
+				INPUT.mousePressed = false;
+				INPUT.mouseReleased = false;
+				if (INPUT.singleActionQueue.length > 0) {
+					const singleAction = INPUT.singleActionQueue.shift()
+					const actionType = singleAction.actionType;
+					const eventData = singleAction.event;
+					
+					if (actionType === "mousedown") {
+						INPUT.mouseDown = true;
+						INPUT.mousePressed = true;
+					} else if (actionType === "mouseup" || actionType === "mouseleave" && INPUT.mouseDown) { 
+						INPUT.mouseDown = false;
+						INPUT.mouseReleased = true;
+					}
+				}
+			}
+			
+			function handleInputUpdates() {
+				inputHandlerUpdate();
+
+				const drawBoxes = document.getElementsByClassName("draw_box");
+				if (drawBoxes.length == 1) {
+					const drawBox = drawBoxes[0];
+					const boxRect = drawBox.getBoundingClientRect();
+					handleInput(drawBox.id, boxRect);
+				}
+				
+				window.requestAnimationFrame(handleInputUpdates);
+			}
+			
+			function initInputHandler() {
+				const body = document.body;
+				[{
+					queue: INPUT.actionQueue,
+					eventTypes: [["mousemove", "touchmove"]]
+				}, {
+					queue: INPUT.singleActionQueue,
+					eventTypes: [["mouseenter"], ["mouseleave", "touchcancel"], ["mousedown", "touchstart"], ["mouseup", "touchend"]]
+				}].forEach((actionGroup) => actionGroup.eventTypes.forEach((actionTypes) => actionTypes.forEach((actionType) => body
+					.addEventListener(actionType, (event) => actionGroup.queue.push({
+						actionType: actionTypes[0],
+						event
+					}), false)
+				)));
+				window.requestAnimationFrame(handleInputUpdates);
+				
+				document.onkeydown = (event) => {
+					const selectedTabs = Array.prototype.slice.call(document.getElementsByTagName("button"))
+							.filter((button) => button.hasAttribute("selected-tab"))
+							.filter((button) => button.getAttribute("selected-tab") === "true")
+							.map((button) => button.getAttribute("tabName"));
+					if (selectedTabs.length === 1 && selectedTabs[0] === "Training") {
+						if (event.key == "Enter") {
+							sendTrainingData();
+						} else if (event.key == "Escape") {
+							resetCanvas();
+						}
+					} else if (selectedTabs.length === 1 && selectedTabs[0] === "Testing") {
+						if (event.key == "Enter") {
+							sendTestingData();
+						} else if (event.key == "Escape") {
+							resetCanvas();
+						}
+					}
+				};
+			}
+			
+			function initDrawPrompt() {
+				const drawPrompt = document.getElementById("draw_prompt");
+				drawPrompt.innerHTML = drawPrompt.innerHTML.replace("...", getNewCharacterToDraw());
+			}
+			
+			function getNewCharacterToDraw() {
+				if (characterToDraw === undefined) {
+					characterToDraw = String.fromCharCode("A".charCodeAt(0) + Math.floor(Math.random() * 26));
+				} else if (characterToDraw === "Z") {
+					characterToDraw = "A";
+				} else {
+					characterToDraw = String.fromCharCode(characterToDraw.charCodeAt(0) + 1);
+				}
+				return characterToDraw;
+			}
+			
+			function sendTrainingData() {
+				const submitButton = getSubmitButton("Training");
+				
+				if (!submitButton.classList.contains("disabled_button")) {
+					const data = binarize(BOX_FILL_STATES["train_draw"]);
+					const httpRequest = {
+							baseUrl: BASE_URI + "/api/contribution",
+							requestMethod: "POST",
+							body: {
+								character: characterToDraw,
+								compressedDrawing: compressDrawing(data)
+							}
+					};
+					
+					submitButton.classList.add("disabled_button");
+					const drawPrompt = document.getElementById("draw_prompt");
+					drawPrompt.innerHTML = drawPrompt.innerHTML.replace("Please draw the letter: " + characterToDraw, "Please draw the letter: " + getNewCharacterToDraw());
+					
+					invokeHttpAsync(httpRequest, (r) => {
+						resetCanvas();
+						getSubmitButton("Training").classList.remove("disabled_button");
+					}, (e) => {
+						resetCanvas();
+						getSubmitButton("Training").classList.remove("disabled_button");
+					});
+				}
+				
+			}
+			
+			function sendTestingData() {
+				const submitButton = getSubmitButton("Testing");
+				
+				if (!submitButton.classList.contains("disabled_button")) {
+					const data = binarize(BOX_FILL_STATES["test_draw"]);
+					const httpRequest = {
+							baseUrl: BASE_URI + "/api/testing",
+							requestMethod: "POST",
+							body: {
+								character: characterToDraw,
+								compressedDrawing: compressDrawing(data)
+							}
+					};
+					
+					submitButton.classList.add("disabled_button");
+					
+					invokeHttpAsync(httpRequest, (r) => {
+						resetCanvas();
+						getSubmitButton("Testing").classList.remove("disabled_button");
+						const testPrompt = document.getElementById("test_prompt");
+						const oldFeedbackText = feedbackText;
+						feedbackText = r.result === " " ? "The server does not have an AI ready yet" : `This character looks like ${getArticle(r.result)} '${r.result}'`;
+						testPrompt.innerHTML = testPrompt.innerHTML.replace(oldFeedbackText, feedbackText);
+					}, (e) => console.error(e));
+				}
+			}
+			
+			function getArticle(character) {
+				const ans = ['A', 'E', 'F', 'H', 'I', 'L', 'M', 'N', 'O', 'R', 'S', 'X'];
+				return ans.includes(character) ? "an" : "a";
+			}
+			
+			function compressDrawing(uncompressedDrawing) {
+				const compressedDrawing = [];
+				let lastValue;
+				
+				let runningCount = 0;
+				for (let bitIndex = 0; bitIndex < uncompressedDrawing.length; bitIndex++) {
+					const currentValue = uncompressedDrawing[bitIndex];
+					if (!(runningCount == 0 || currentValue == lastValue && runningCount < 32)) {
+						const compressedRun = toBinary(runningCount - 1);
+						runningCount = 0;
+						compressedRun.unshift(lastValue);
+						Array.prototype.push.apply(compressedDrawing, compressedRun);
+					}
+					runningCount++;
+					lastValue = currentValue;
+				}
+				const compressedRun = toBinary(runningCount - 1);
+				compressedRun.unshift(lastValue);
+				Array.prototype.push.apply(compressedDrawing, compressedRun);
+				
+				return compressedDrawing;
+			}
+
+			function toBinary(value) {
+				const flags = [];
+				for (let i = 0; i < 5; i++) {
+					flags.push((value & (1 << i)) != 0);
+				}
+				return flags;
+			}
+			
+			function getSubmitButton(name) {
+				const trainingTab = Array.prototype.slice.call(document.getElementsByTagName("tab"))
+					.filter((tab) => tab.getAttribute("name") === name)[0];
+				return trainingTab.getElementsByClassName("accept_button")[0];
+			}
+			
+			function resetCanvas() {
+				BOX_FILL_STATES["train_draw"] = createEmptyFillState();
+				BOX_FILL_STATES["test_draw"] = createEmptyFillState();
+				window.requestAnimationFrame(handleDrawBoxes);
+			}
+			
+			function binarize(array) {
+				const binaryArray = [];
+				for (let index = 0; index < array.length; index++) {
+					binaryArray.push(array[index] >= 0.5);
+				}
+				return binaryArray;
+			}
+			
+			window.onload = function() {
+				initInputHandler();
+				initDrawPrompt();
+				initTabs();
+			};
+			
+		</script>
+	</body>
+</html>

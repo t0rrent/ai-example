@@ -31,7 +31,7 @@ public class AIExampleApplication extends Application {
 	);
 
 	private static final Pipeline AI_INTERNAL_PIPELINE = Pipeline.of(
-			"ai-trainer",
+			"aiTrainer",
 			AITrainingPipelineModuleBinder::new,
 			AIExampleCoreBinder::new
 	);

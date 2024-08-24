@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="example.ai.mapper.DataRetrievalMapper">
+	<resultMap id="drawingDataEntryResultMap" type="DrawingDataEntry">
+		<result property="character" column="character" />
+		<result property="compressedDrawing" column="compressed_drawing" javaType="java.util.Collection"
+				typeHandler="example.ai.mybatis.BooleanCollectionTypeHandler" />
+	</resultMap>
+	
+	<select id="getTrainingData" resultMap="drawingDataEntryResultMap">
+		SELECT
+			character,
+			compressed_drawing
+		FROM
+			training_data
+		JOIN contributors
+			ON training_data.contributor_id = contributors.id
+		WHERE NOT banned;
+	</select>
+</mapper>

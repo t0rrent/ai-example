@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="example.ai.mapper.AuthMapper">	
+	<select id="isContributorBanned" parameterType="String" resultType="Boolean">
+		SELECT COALESCE(
+			FALSE,
+			(
+				SELECT banned
+				FROM contributors
+				WHERE ip_address = #{ip_address}
+			)
+		);
+	</select>
+	
+	<select id="getContributorByIpAddress" parameterType="String" resultType="long">
+		SELECT id
+		FROM contributors
+		WHERE ip_address = #{ip_address};
+	</select>
+	
+	<select id="createContributor" parameterType="String" resultType="long">
+		INSERT INTO contributors (
+			ip_address
+		) VALUES (
+			#{ip_address}
+		)
+		RETURNING id;
+	</select>
+	
+	<select id="checkAuthorization" parameterType="String" resultType="boolean">
+		SELECT #{adminPAT} = token
+		FROM admin_access_token;
+	</select>
+	
+	<update id="setBanStatus" parameterType="SetBanParam">
+		UPDATE contributors
+		SET banned = #{newStatus}
+		WHERE id = #{contributorId};
+	</update>
+</mapper>

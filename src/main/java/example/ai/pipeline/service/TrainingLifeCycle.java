@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import example.ai.application.service.ModelService;
 import example.ai.core.model.DrawingData;
 import example.ai.core.service.LifeCycle;
+import example.ai.core.util.SimpleConfigUtil;
 import jakarta.inject.Inject;
 
 public class TrainingLifeCycle implements LifeCycle {
@@ -192,7 +193,7 @@ public class TrainingLifeCycle implements LifeCycle {
 		} catch (final IOException exception) {
 			LOGGER.error("Error committing model", exception);
 		}
-		schedule(60);
+		schedule(SimpleConfigUtil.getConfig("trainingPeriodMinutes", 60));
 	}
 
 	private double evaluateModel(final List<DataSet> testData) {
